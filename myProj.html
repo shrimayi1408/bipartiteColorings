@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+</head>
+<body>
+
+    <div id="cy"></div>
+
+    <script>
+        // all your JS goes here
+        function enumerateColorings(vertices, edges, k) {
+            function isProper(coloring, edges) {
+                return edges.every(([a, b]) => coloring[a] !== coloring[b]);
+            }
+
+            const colorings = [];
+
+            function generateColorings(index, assignment) {
+                if (index === vertices.length) {
+                    if (isProper(assignment)) {
+                        colorings.push({ ...assignment });
+                    }
+                    return;
+                }
+
+                const vertex = vertices[index];
+                for (let color = 0; color < k; color++) {
+                    assignment[vertex] = color;
+                    generateColorings(index + 1, assignment);
+                }
+                delete assignment[vertex];
+            }
+
+            generateColorings(0, {});
+            return colorings;
+        }
+
+        function flippableVertices(coloring, vertices, adjacencyList, k) {
+            const flips = {};
+
+            for (const vertex of vertices) {
+                const neighborColors = new Set(
+                adjacencyList[vertex].map((neighbor) => coloring[neighbor])
+                );
+
+                const alternatives = [];
+
+                for (let color = 0; color < k; color++) {
+                    if (color !== coloring[vertex] &&
+                        !neighborColors.has(color)) {
+                        alternatives.push(color);
+                    }
+                }
+
+                if (alternatives.length > 0) {
+                    flips[vertex] = alternatives;
+                }
+            }
+
+            return flips;
+        }
+        function ckey(coloring) {
+            const sortedEntries = Object.entries(coloring).sort(([a], [b]) => a.localeCompare(b));
+            return JSON.stringify(sortedEntries);
+        }
+
+        function buildColoringGraphAdj(vertices, k) {
+            /*
+            * Build the adjacency list of C_k(G).
+            * Two colorings are adjacent when they differ at exactly one vertex
+            * and the recoloring is legal.
+            */
+
+            const colorings = [];
+
+            function generate(index, coloring){
+                if (index === vertices.length) {
+                    colorings.push({ ...coloring });
+                    return;
+                }
+                const vertex = vertices[index];
+                for (let color = 0; color < k; color++) {
+                    coloring[vertex] = color;
+                    generate(index + 1, coloring);
+                }
+                delete coloring[vertex];
+            }
+            generate(0, {});
+            return colorings;
+        }
+    </script>
+
+</body>
+</html>
