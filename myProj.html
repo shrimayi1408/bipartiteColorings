@@ -6,6 +6,13 @@
 <body>
 
     <div id="cy"></div>
+    <style>
+        #cy {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ccc;
+        }
+    </style>
 
     <script>
         // all your JS goes here
@@ -65,30 +72,80 @@
             return JSON.stringify(sortedEntries);
         }
 
-        function buildColoringGraphAdj(vertices, k) {
+        function buildColoringGraphAdj(colorings, vertices, adjacencyList, k, coloringSet) {
             /*
             * Build the adjacency list of C_k(G).
             * Two colorings are adjacent when they differ at exactly one vertex
             * and the recoloring is legal.
             */
 
-            const colorings = [];
+            const graph = new Map();
 
-            function generate(index, coloring){
-                if (index === vertices.length) {
-                    colorings.push({ ...coloring });
-                    return;
-                }
-                const vertex = vertices[index];
-                for (let color = 0; color < k; color++) {
-                    coloring[vertex] = color;
-                    generate(index + 1, coloring);
-                }
-                delete coloring[vertex];
+            for (const coloring of colorings) {
+                graph.set(ckey(coloring), []);
             }
-            generate(0, {});
-            return colorings;
+
+            for (const coloring of colorings) {
+                const flips = flippableVertices(coloring, vertices, adjacencyList, k);
+                for (const [vertex, alternatives] of Object.entries(flips)) {
+                    for (const newColor of alternatives) {
+                        const newColoring = { ...coloring, [vertex]: newColor };
+                        if (coloringSet.has(ckey(newColoring))) {
+                            graph.get(ckey(coloring)).push(ckey(newColoring));
+                        }
+                    }
+                }
+            }
+            return graph;
         }
+
+        //Graph sample data
+        const vertices = ['A', 'B', 'C'];
+        const edges = [['A', 'B'], ['B', 'C']];
+
+        const adjacencyList = {A: ["B"], B: ["A", "C"], C: ["B"]};
+        const k = 3;
+        const colorings = enumerateColorings(vertices, edges, k);
+        const coloringSet = new Set(colorings.map((coloring) => ckey(coloring)));
+        const coloringGraphAdj = buildColoringGraphAdj(colorings, vertices, adjacencyList, k, coloringSet);
+
+        //convert map to cytoscape nodes and edges
+        const elements = [];
+        const edgeIds = new Set();
+        for (const c of colorings) {
+            const nodeId = ckey(c);
+            elements.push({ data: { id: nodeId, label: nodeId } });
+        }
+        for (const [source, neighbors] of coloringGraphAdj) {
+            for (const target of neighbors) {
+                //to prevent duplicate visual edges, we can use a set to track added edges
+                const edgeKey = [source, target].sort().join('-');
+                if (!edgeIds.has(edgeKey)) {
+                    edgeIds.add(edgeKey);
+                    elements.push({ data: { id: `edge-${edgeIds.size}`, source, target } });
+                }
+            }
+        }
+
+        //create Cytospace graph
+        const cy = cytoscape({ container: document.getElementById('cy'), elements, style: [{ selector: 'node', 
+        style: { 
+            label: "data(label)",
+            "background-color": "#4f46e5",
+            color: "#111",
+            "text-valign": "center",
+            "text-halign": "center",
+            width: 40,
+            height: 40 } },
+        {
+            selector: "edge",
+            style: {
+                width: 2,
+                "line-color": "#999"
+            }
+        }],
+        layout: { name: "cose", animate: false } 
+    });
     </script>
 
 </body>
