@@ -17,7 +17,7 @@
     <script>
         // all your JS goes here
         function enumerateColorings(vertices, edges, k) {
-            function isProper(coloring, edges) {
+            function isProper(coloring) {
                 return edges.every(([a, b]) => coloring[a] !== coloring[b]);
             }
 
@@ -131,6 +131,7 @@
         const cy = cytoscape({ container: document.getElementById('cy'), elements, style: [{ selector: 'node', 
         style: { 
             label: "data(label)",
+            "font-size": 10,
             "background-color": "#4f46e5",
             color: "#111",
             "text-valign": "center",
