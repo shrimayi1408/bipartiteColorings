@@ -116,6 +116,32 @@
             }
             return degrees;
         }
+        //set difference: new colorings, lost colorings, preserved
+        function diffColorings(ckOld, ckNew) {
+            const oldSet = new Set(ckOld.map(ckey));
+            const newSet = new Set(ckNew.map(ckey));
+
+            const lost = [...oldSet].filter(x => !newSet.has(x));
+            const gained = [...newSet].filter(x => !oldSet.has(x));
+            const preserved = [...oldSet].filter(x => newSet.has(x));
+
+            return { lost, gained, preserved };
+        }
+
+        function addPanel(index) {
+            const row = document.createElement('div');
+            row.className = 'panel-row';
+            row.innerHTML = `
+                <div id="og-${index}" class="graph-pane"></div>
+                <div id="ck-${index}" class="graph-pane"></div>
+                <div class="legend">Degree color meaning</div>
+            `;
+            document.getElementById('panels-container').appendChild(row);
+
+            // init cytoscape for this panel's base graph
+            // copy OG edges, make them clickable to remove
+        }
+        
         //Graph sample data
         const vertices = ['A', 'B', 'C'];
         const edges = [['A', 'B'], ['B', 'C']];
@@ -129,14 +155,30 @@
         //convert map to cytoscape nodes and edges
         const elements = [];
         const edgeIds = new Set();
-        for (const c of colorings) {
-            const nodeId = ckey(c);
-            elements.push({ data: { id: nodeId, label: nodeId } });
+        const nodeIdByKey = new Map();
+
+        for (const [index, coloring] of colorings.entries()) {
+            const key = ckey(coloring);
+            const nodeId = `coloring-${index}`;
+
+            //what this does: map coloring key to a node ID for Cytoscape, allowing us to easily ref nodes to create edges between.
+            nodeIdByKey.set(key, nodeId); 
+
+            //what this does: create a label in format "vertex:color"
+            const label = vertices
+                .map(vertex => `${vertex}:${coloring[vertex]}`)
+                .join(" ");
+
+            elements.push({ data: { id: nodeId, label: label, coloringKey: key} });
         }
-        for (const [source, neighbors] of coloringGraphAdj) {
-            for (const target of neighbors) {
+
+        //what this does: for each coloring, look up its neighbors in coloringGraphAdj list + create edges between corres' nodes.
+        for (const [sourceKey, neighbors] of coloringGraphAdj) {
+            for (const targetKey of neighbors) {
+                const source = nodeIdByKey.get(sourceKey);
+                const target = nodeIdByKey.get(targetKey);
                 //to prevent duplicate visual edges, we can use a set to track added edges
-                const edgeKey = [source, target].sort().join('-');
+                const edgeKey = [source, target].sort().join('|');
                 if (!edgeIds.has(edgeKey)) {
                     edgeIds.add(edgeKey);
                     elements.push({ data: { id: `edge-${edgeIds.size}`, source, target } });
@@ -151,11 +193,20 @@
         const avgDegree = values.reduce((a, b) => a + b, 0) / values.length;
         const bottlenecks = Object.entries(degrees).filter(([node, degree]) => degree > avgDegree).map(([node]) => node);
         
-
+        const state = { 
+            ogGraph: { vertices: [], edges: [] },
+            panels: [
+                // each panel is one modification of OG
+                { id: 0, removedEdges: [], colorings: [], ckAdj: null },
+                { id: 1, removedEdges: [], colorings: [], ckAdj: null },
+            ]
+        }
+        
+        
         //color nodes based on degree
         for (const node of elements) {
-            if (node.data && node.data.id) {
-                const degree = degrees[node.data.id] || 0;
+            if (node.data && node.data.coloringKey) {
+                const degree = degrees[node.data.coloringKey] || 0;
                 if (degree === 0) { 
                     node.data.color = "#f87171"; // red for isolated nodes
                 } else if (degree < avgDegree) {
@@ -165,27 +216,33 @@
                 }
             }
         }
-
+        
         //create Cytospace graph
         const cy = cytoscape({ container: document.getElementById('cy'), elements, style: [{ 
             selector: 'node', 
             style: { 
-                label: "data(label)",
-                "font-size": 5,
-                "background-color": "data(color)",
-                color: "#111",
-                "text-valign": "center",
-                "text-halign": "center",
-                width: 40,
-                height: 40 } },
+                label: 'data(label)',
+                'font-size': 5,
+                'background-color': 'data(color)',
+                color: '#111',
+                'text-valign': 'center',
+                'text-halign': 'center',
+                width: 60,
+                height: 80 } },
             {
-                selector: "edge",
+                selector: 'edge',
                 style: {
                     width: 2,
-                    "line-color": "#999"
+                    'line-color': '#999'
                 }
             }],
         layout: { name: "cose", animate: true } 
+    });
+    // 3. Add events only after cy exists
+    cy.on('tap', 'edge', function(evt) {
+        const edge = evt.target;
+        console.log('Clicked edge:', edge.data());
+        edge.remove();
     });
     </script>
 
