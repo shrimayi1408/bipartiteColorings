@@ -2,19 +2,142 @@
 <html>
 <head>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/3d-force-graph@1"></script>
 </head>
 <body>
 
-    <div id="cy"></div>
+    <button id="add-panel-btn">Add Panel</button>
+    <button id="analysis-btn">Show Analysis</button>
+    <div id="legend" class="legend">
+                    <p>Degree color key</p>
+                    <p><span class="color-box green"></span> higher degree</p>
+                    <p><span class="color-box yellow"></span> lower degree</p>
+                    <p><span class="color-box red"></span> isolated</p>
+    </div>
+    <div id="panels-container"></div>
+    <div id="analysis-box"></div>
     <style>
+        body {
+            margin: 20px;
+            background-color: #000000;
+            color: #ffffff;
+        }
+
         #cy {
             width: 100%;
             height: 600px;
-            border: 1px solid #ccc;
+            border: 1px solid #160b0b;
+        }
+
+            #add-panel-button {
+            margin: 10px;
+            padding: 8px 14px;
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        #panels-container {
+            width: 100%;
+        }
+        .panel-row {
+            display: flex;
+            gap: 12px;
+            margin: 15px 0;
+            align-items: stretch;
+        }
+
+        .graph-pane {
+            height: 500px;
+            width: 600px;
+            border: 1px solid #fdfdfd;
+        }
+
+        .legend {
+            padding: 10px;
+            min-width: 150px;
+        }
+
+        #legend {
+            position: fixed;
+            top: 10px;
+            right: 20px;
+            z-index: 1000;
+
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid #aaa;
+            border-radius: 8px;
+            padding: 10px 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+            font-size: 14px;
+        }
+        .color-box {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            margin-right: 5px;
+            vertical-align: middle;
+            border: 1px solid #777;
+        }
+
+        .green {
+            background-color: #4ade80;
+        }
+
+        .yellow {
+            background-color: #facc15;
+        }
+
+        .red {
+            background-color: #f87171;
+        }
+
+        #analysis-box {
+            display: none;
+            position: fixed;        /* stays in corner regardless of scroll */
+            bottom: 24px;
+            right: 24px;
+            width: 320px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 16px;
+            padding: 20px;
+            z-index: 1000;
+            color: #ffffff;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        }
+
+        #analysis-box.visible {
+            display: block;
         }
     </style>
 
     <script>
+        //UI function to build analysis HTML
+        function buildAnalysisHTML() {
+            if (panelState.length === 0) {
+                return `<h3>Analysis</h3><p>No panels available for analysis.</p>`;
+            }
+            let html = `<h3 style="margin:0 0 12px 0;">Analysis</h3>`;
+            for (const panel of panelState) {
+                const removed = panel.removedEdges.length;
+                const coloringCount = panel.colorings?.length ?? colorings.length;
+                const diff = colorings.length - coloringCount;
+
+                html += `<div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #555">
+                        <b>Panel ${panel.id + 1} </b><br>
+                        Removed edges: ${removed}<br>
+                        Colorings: ${coloringCount} 
+                        (${diff > 0 ? '−' + diff : diff < 0 ? '+' + Math.abs(diff) : 'no change'})<br>
+                        ${removed === 0 ? 'No modifications yet' : 
+                        `Removed: ${panel.removedEdges.map(([a,b]) => a+'−'+b).join(', ')}`}
+                    </div>`;
+            }
+            return html;
+        }
+
         // all your JS goes here
         function enumerateColorings(vertices, edges, k) {
             function isProper(coloring) {
@@ -127,20 +250,6 @@
 
             return { lost, gained, preserved };
         }
-
-        function addPanel(index) {
-            const row = document.createElement('div');
-            row.className = 'panel-row';
-            row.innerHTML = `
-                <div id="og-${index}" class="graph-pane"></div>
-                <div id="ck-${index}" class="graph-pane"></div>
-                <div class="legend">Degree color meaning</div>
-            `;
-            document.getElementById('panels-container').appendChild(row);
-
-            // init cytoscape for this panel's base graph
-            // copy OG edges, make them clickable to remove
-        }
         
         //Graph sample data
         const vertices = ['A', 'B', 'C'];
@@ -193,16 +302,6 @@
         const avgDegree = values.reduce((a, b) => a + b, 0) / values.length;
         const bottlenecks = Object.entries(degrees).filter(([node, degree]) => degree > avgDegree).map(([node]) => node);
         
-        const state = { 
-            ogGraph: { vertices: [], edges: [] },
-            panels: [
-                // each panel is one modification of OG
-                { id: 0, removedEdges: [], colorings: [], ckAdj: null },
-                { id: 1, removedEdges: [], colorings: [], ckAdj: null },
-            ]
-        }
-        
-        
         //color nodes based on degree
         for (const node of elements) {
             if (node.data && node.data.coloringKey) {
@@ -216,34 +315,268 @@
                 }
             }
         }
-        
-        //create Cytospace graph
-        const cy = cytoscape({ container: document.getElementById('cy'), elements, style: [{ 
-            selector: 'node', 
-            style: { 
-                label: 'data(label)',
-                'font-size': 5,
-                'background-color': 'data(color)',
-                color: '#111',
-                'text-valign': 'center',
-                'text-halign': 'center',
-                width: 60,
-                height: 80 } },
-            {
-                selector: 'edge',
-                style: {
-                    width: 2,
-                    'line-color': '#999'
+
+        function recomputePanel(panelIndex) {
+            const panel = panelState[panelIndex]; //1
+            const removedEdges = panel.removedEdges;
+
+            // Recompute the coloring graph based on the removed edges //const newAdjacencyList = { ...adjacencyList }; shallow copy
+            const newAdjacencyList = {};
+            for (const v of vertices) {
+                newAdjacencyList[v] = [...adjacencyList[v]];
+            } //2
+
+            for (const [source, target] of removedEdges) {
+                newAdjacencyList[source] = newAdjacencyList[source].filter(v => v !== target);  
+                newAdjacencyList[target] = newAdjacencyList[target].filter(v => v !== source);
+            }
+
+            const newEdges = edges.filter(([a, b]) => !removedEdges.some(([ra, rb]) => (ra === a && rb === b) || (ra === b && rb === a))); //3
+            const newColorings = enumerateColorings(vertices, newEdges, k); //4
+            const newColoringSet = new Set(newColorings.map((coloring) => ckey(coloring))); //5
+            const newColoringGraphAdj = buildColoringGraphAdj(newColorings, vertices, newAdjacencyList, k, newColoringSet); //6
+
+            // Update colors based on degree
+            const newDegrees = outDegree(newColoringGraphAdj);
+            const values = Object.values(newDegrees);
+            const avgDegree = values.reduce((a, b) => a + b, 0) / values.length;
+
+            // Update the coloring graph visualization
+            const newElements = [];
+            const newEdgeIds = new Set();
+            const newNodeIdByKey = new Map();
+
+            //build new nodes for the coloring graph
+            for (const [index, coloring] of newColorings.entries()) {
+                const key = ckey(coloring);
+                const nodeId = `coloring-${index}`;
+
+                newNodeIdByKey.set(key, nodeId);
+
+                const label = vertices
+                    .map(vertex => `${vertex}:${coloring[vertex]}`)
+                    .join(" ");
+
+                newElements.push({ data: { id: nodeId, label: label, coloringKey: key } });
+            }
+            //build new edges for the coloring graph
+            for (const [sourceKey, neighbors] of newColoringGraphAdj) {
+                for (const targetKey of neighbors) {
+                    const source = newNodeIdByKey.get(sourceKey);
+                    const target = newNodeIdByKey.get(targetKey);
+                    const edgeKey = [source, target].sort().join('|');
+                    if (!newEdgeIds.has(edgeKey)) {
+                        newEdgeIds.add(edgeKey);
+                        newElements.push({ data: { id: `edge-${newEdgeIds.size}`, source, target } });
+                    }
                 }
-            }],
-        layout: { name: "cose", animate: true } 
-    });
-    // 3. Add events only after cy exists
-    cy.on('tap', 'edge', function(evt) {
-        const edge = evt.target;
-        console.log('Clicked edge:', edge.data());
-        edge.remove();
-    });
+            }
+
+            //apply color coding based on degree
+            for (const node of newElements) {
+                if (node.data && !node.data.source) {
+                    const degree = newDegrees[node.data.coloringKey] || 0;
+                    if (degree === 0) {
+                        node.data.color = "#f87171";
+                    } else if (degree < avgDegree) {
+                        node.data.color = "#facc15";
+                    } else {
+                        node.data.color = "#4ade80";
+                    }
+                }
+            }
+
+            const nodes3d = newElements
+                .filter(el => !el.data.source)
+                .map(el => ({id: el.data.id, label: el.data.label, color: el.data.color || '#999'
+                }));
+            
+            const links3d = newElements
+                .filter(el => el.data.source)
+                .map(el => ({source: el.data.source, target: el.data.target
+                }));
+
+            panel.ckGraph.graphData({ nodes: nodes3d, links: links3d });
+
+            //store on panel to use later for analysis
+            panel.colorings = newColorings;
+            panel.ckAdj = newColoringGraphAdj;
+
+            if (document.getElementById('analysis-box').classList.contains('visible')) {
+                const box = document.getElementById('analysis-box');
+                box.innerHTML = buildAnalysisHTML();
+            }
+
+        }
+
+        function createOriginalGraph(containerId, panelIndex) {
+            const ogElements = [];
+
+            for (const vertex of vertices) {
+                ogElements.push({
+                    data: {
+                        id: vertex,
+                        label: vertex
+                    }
+                });
+            }
+
+            for (const [index, [source, target]] of edges.entries()) {
+                ogElements.push({
+                    data: {
+                        id: `og-edge-${panelIndex}-${index}`,
+                        source,
+                        target
+                    }
+                });
+            }
+
+            const cy = cytoscape({
+                container: document.getElementById(containerId),
+                elements: ogElements,
+
+                style: [
+                    {
+                        selector: "node",
+                        style: {
+                            label: "data(label)",
+                            "background-color": "#e54f46",
+                            color: "#111",
+                            "text-valign": "center",
+                            "text-halign": "center",
+                            width: 50,
+                            height: 45
+                        }
+                    },
+                    {
+                        selector: "edge",
+                        style: {
+                            width: 3,
+                            "line-color": "#999"
+                        }
+                    }
+                ],
+
+                layout: {
+                    name: "grid",
+                    padding: 20
+                }
+            });
+
+            cy.on("tap", "edge", function(event) {
+                const edge = event.target;
+                const edgeData = edge.data();
+
+                panelState[panelIndex].removedEdges.push([
+                    edgeData.source,
+                    edgeData.target]);
+
+                edge.remove();
+
+                console.log(
+                    `Panel ${panelIndex} removed:`,
+                    panelState[panelIndex].removedEdges
+                );
+
+                // Later, call a recomputation function here:
+                recomputePanel(panelIndex);
+
+            });
+
+            return cy;
+        }
+
+        function createColoringGraph(containerId, panelIndex) {
+            const nodes3d = elements
+                .filter(el => !el.data.source)
+                .map(el => ({
+                    id: el.data.id,
+                    label: el.data.label,
+                    color: el.data.color || '#999'
+                }));
+
+            const links3d = elements
+                .filter(el => el.data.source)
+                .map(el => ({
+                    source: el.data.source,
+                    target: el.data.target
+                }));
+
+            const graph = ForceGraph3D()(document.getElementById(containerId))
+                .graphData({ nodes: nodes3d, links: links3d })
+                .nodeColor(node => node.color)
+                .nodeLabel(node => node.label)
+                .linkColor(() => '#FFFFFF')
+                .linkWidth(1)
+                .backgroundColor('#000000')
+                .width(600)
+                .height(500);
+
+            return graph;
+        }
+
+        function addPanel(index) {
+            const row = document.createElement("div");
+            row.className = "panel-row";
+            row.innerHTML = `
+                <div>
+                    <h3>Original graph ${index + 1}</h3>
+                    <div id="og-${index}" class="graph-pane"></div>
+                </div>
+
+                <div>
+                    <h3>Coloring graph ${index + 1}</h3>
+                    <div id="ck-${index}" class="graph-pane"></div>
+                </div>
+            `;
+            document.getElementById('panels-container').appendChild(row);
+
+            // init cytoscape for this panel's base graph
+            // copy OG edges, make them clickable to remove            
+            const panel = {id: index, removedEdges: [], ogCy: null, ckGraph: null };
+
+            panelState.push(panel);
+
+            panel.ogCy = createOriginalGraph(`og-${index}`, index);
+            console.log("Original graph nodes:", panel.ogCy.nodes().length, "edges:", panel.ogCy.edges().length);  
+
+            panel.ckGraph = createColoringGraph(`ck-${index}`, index);
+            //console.log("Coloring graph nodes:", panel.ckGraph.nodes().length, "edges:", panel.ckGraph.edges().length);
+        }
+
+        console.log("Cytoscape type:", typeof cytoscape);
+        console.log("Colorings:", colorings);
+        console.log("Number of colorings:", colorings.length);
+        console.log("Coloring graph:", coloringGraphAdj);
+        console.log("Elements:", elements);
+        console.log(
+            "Nodes:",
+            elements.filter(element => !element.data.source && !element.data.target)
+        );
+        console.log(
+            "Edges:",
+            elements.filter(element => element.data.source && element.data.target)
+        );
+
+        console.log("Before adding panel");
+        console.log("Elements available:", elements.length);
+        console.log("Cytoscape loaded:", typeof cytoscape);
+
+        const panelState = []; 
+
+        let nextPanelIndex = 0;
+        document.getElementById('add-panel-btn').addEventListener('click', function() {
+            addPanel(nextPanelIndex);
+            nextPanelIndex++; });
+
+        addPanel(nextPanelIndex);
+        nextPanelIndex++;
+
+        document.getElementById('analysis-btn').addEventListener('click', () => {
+            const box = document.getElementById('analysis-box');
+            box.innerHTML = buildAnalysisHTML();
+            box.classList.toggle('visible');
+        });
     </script>
 
 </body>
