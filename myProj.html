@@ -132,7 +132,10 @@
                         Colorings: ${coloringCount} 
                         (${diff > 0 ? '−' + diff : diff < 0 ? '+' + Math.abs(diff) : 'no change'})<br>
                         ${removed === 0 ? 'No modifications yet' : 
-                        `Removed: ${panel.removedEdges.map(([a,b]) => a+'−'+b).join(', ')}`}
+                        `Removed: ${panel.removedEdges.map(([a,b]) => a+'−'+b).join(', ')}`}<br>
+                        Degree distribution: ${panel.ckAdj ? JSON.stringify(degreeDistribution(panel.ckAdj)) : 'N/A'} <br>
+                        Bottlenecks: ${panel.ckAdj ? JSON.stringify(Object.entries(outDegree(panel.ckAdj)).filter(([node, degree]) => degree > (Object.values(outDegree(panel.ckAdj)).reduce((a, b) => a + b, 0) / Object.values(outDegree(panel.ckAdj)).length)).map(([node]) => node)) : 'N/A'}
+
                     </div>`;
             }
             return html;
@@ -250,18 +253,50 @@
 
             return { lost, gained, preserved };
         }
+
+        function degreeColorCode(elements, degrees, avgDegree) {
+            for (const node of elements) {
+                if (node.data && !node.data.source) {
+                    const degree = degrees[node.data.coloringKey] || 0;
+                    if (degree === 0) {
+                        node.data.color = "#f87171"; // red for isolated nodes
+                    } else if (degree < avgDegree) {
+                        node.data.color = "#facc15"; // yellow for degree < avgDegree
+                    } else {
+                        node.data.color = "#4ade80"; // green for degree > avgDegree
+                    }
+                }
+            }
+        }
         
         //Graph sample data
-        const vertices = ['A', 'B', 'C'];
-        const edges = [['A', 'B'], ['B', 'C']];
+        //const vertices = ['A', 'B', 'C']; // K 1,2
+        //const edges = [['A', 'B'], ['B', 'C']]; // K 1,2
+        const m = ['A', 'B', 'C']; // K 3
+        const n = ['D', 'E', 'F']; // , 3
+        const vertices = [...m, ...n]; // K 3,3
+        const edges = [];
+        for (const left of m) {
+            for (const right of n) {
+                edges.push([left, right]);
+            }
+        }
 
-        const adjacencyList = {A: ["B"], B: ["A", "C"], C: ["B"]};
+        const adjacencyList = {};
+        for (const v of vertices) {
+            adjacencyList[v] = [];
+        }
+        for (const [source, target] of edges) {
+            adjacencyList[source].push(target);
+            adjacencyList[target].push(source);
+        }
         const k = 3;
         const colorings = enumerateColorings(vertices, edges, k);
         const coloringSet = new Set(colorings.map((coloring) => ckey(coloring)));
         const coloringGraphAdj = buildColoringGraphAdj(colorings, vertices, adjacencyList, k, coloringSet);
 
         //convert map to cytoscape nodes and edges
+        //for adjacency list of the coloring graph for visualization with Cytoscape
         const elements = [];
         const edgeIds = new Set();
         const nodeIdByKey = new Map();
@@ -303,18 +338,7 @@
         const bottlenecks = Object.entries(degrees).filter(([node, degree]) => degree > avgDegree).map(([node]) => node);
         
         //color nodes based on degree
-        for (const node of elements) {
-            if (node.data && node.data.coloringKey) {
-                const degree = degrees[node.data.coloringKey] || 0;
-                if (degree === 0) { 
-                    node.data.color = "#f87171"; // red for isolated nodes
-                } else if (degree < avgDegree) {
-                    node.data.color = "#facc15"; // yellow for degree < avgDegree
-                } else {
-                    node.data.color = "#4ade80"; // green for degree > avgDegree
-                }
-            }
-        }
+        degreeColorCode(elements, degrees, avgDegree);
 
         function recomputePanel(panelIndex) {
             const panel = panelState[panelIndex]; //1
@@ -373,28 +397,15 @@
             }
 
             //apply color coding based on degree
-            for (const node of newElements) {
-                if (node.data && !node.data.source) {
-                    const degree = newDegrees[node.data.coloringKey] || 0;
-                    if (degree === 0) {
-                        node.data.color = "#f87171";
-                    } else if (degree < avgDegree) {
-                        node.data.color = "#facc15";
-                    } else {
-                        node.data.color = "#4ade80";
-                    }
-                }
-            }
+            degreeColorCode(newElements, newDegrees, avgDegree);
 
             const nodes3d = newElements
                 .filter(el => !el.data.source)
-                .map(el => ({id: el.data.id, label: el.data.label, color: el.data.color || '#999'
-                }));
+                .map(el => ({id: el.data.id, label: el.data.label, color: el.data.color || '#999'}));
             
             const links3d = newElements
                 .filter(el => el.data.source)
-                .map(el => ({source: el.data.source, target: el.data.target
-                }));
+                .map(el => ({source: el.data.source, target: el.data.target}));
 
             panel.ckGraph.graphData({ nodes: nodes3d, links: links3d });
 
