@@ -1,6 +1,6 @@
 # Graph Coloring Structure Visualizer
 
-An interactive browser-based tool for exploring how the structure of a **coloring graph C_k(G)** changes when edges are removed from a base graph G. Built as a computational companion to research on graph coloring reconfiguration, specifically Sara Krehbiel et al.'s work on connectivity and cut-colorings in coloring graphs.
+An interactive browser-based tool for exploring how the structure of a **coloring graph C_k(G)** changes when edges are removed from a base graph G. Built as a computational companion to research on graph coloring reconfiguration, specifically Sara Krehbiel's research.
 
 ---
 
