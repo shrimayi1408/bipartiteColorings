@@ -525,8 +525,7 @@
                 .d3Force('link', d3.forceLink().distance(1))*/
                 .d3AlphaDecay(0.02)
                 .width(600)
-                .height(500)
-                .onEngineStop(() => graph.zoomToFit(600, 80));
+                .height(500);
 
             return graph;
         }
