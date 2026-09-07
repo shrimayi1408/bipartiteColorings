@@ -134,6 +134,7 @@
                         ${removed === 0 ? 'No modifications yet' : 
                         `Removed: ${panel.removedEdges.map(([a,b]) => a+'−'+b).join(', ')}`}<br>
                         Degree distribution: ${panel.ckAdj ? JSON.stringify(degreeDistribution(panel.ckAdj)) : 'N/A'} <br>
+                        Average degree: ${panel.ckAdj ? (Object.values(outDegree(panel.ckAdj)).reduce((a, b) => a + b, 0) / Object.values(outDegree(panel.ckAdj)).length).toFixed(2) : 'N/A'} <br>
                         Bottlenecks: <br>
 
                     </div>`;
