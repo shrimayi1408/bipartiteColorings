@@ -168,7 +168,12 @@
             generateColorings(0, {});
             return colorings;
         }
-
+        // Using adjacency list instead of a NxN matrix for efficiency, especially for sparse 
+        // graphs like K3,3 where most edges aren't present and instead of "does coloring X connect 
+        // to coloring Y," you ask "does coloring Y exist in the valid set," which is O(1).
+        
+        // This function identifies vertices 
+        // that can be recolored to a different color without violating the coloring constraints.
         function flippableVertices(coloring, vertices, adjacencyList, k) {
             const flips = {};
 
