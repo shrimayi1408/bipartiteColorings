@@ -154,14 +154,11 @@
                         <b>Panel ${panel.id + 1} </b><br>
                         Removed edges: ${removed}<br>
                         Colorings: ${coloringCount} 
-                        (${diff > 0 ? '−' + diff : diff < 0 ? '+' + Math.abs(diff) : 'no change'})<br>
-                        ${removed === 0 ? 'No modifications yet' : 
-                        `Removed: ${panel.removedEdges.map(([a,b]) => a+'−'+b).join(', ')}`}<br>
                         Degree distribution: ${panel.ckAdj ? JSON.stringify(degreeDistribution(panel.ckAdj)) : 'N/A'} <br>
                         Average degree: ${panel.ckAdj ? (Object.values(outDegree(panel.ckAdj)).reduce((a, b) => a + b, 0) / Object.values(outDegree(panel.ckAdj)).length).toFixed(2) : 'N/A'} <br>
                         Node degree breakdown: ${breakdownHTML}<br>
                         Bottlenecks: ${panel.articulationPoints ? panel.articulationPoints.size === 0
-                                        ? 'none — graph stays connected if any single coloring removed'
+                                        ? 'none — graph stays connected despite single removals'
                                         : `${panel.articulationPoints.size} cut coloring(s) found`
                                     : 'N/A'}<br>
                     </div>`;
