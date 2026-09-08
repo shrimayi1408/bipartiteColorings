@@ -347,7 +347,7 @@
             adjacencyList[source].push(target);
             adjacencyList[target].push(source);
         }
-        const k = 3;
+        const k = 3; // number of colors
         const colorings = enumerateColorings(vertices, edges, k);
         const coloringSet = new Set(colorings.map((coloring) => ckey(coloring)));
         const coloringGraphAdj = buildColoringGraphAdj(colorings, vertices, adjacencyList, k, coloringSet);
