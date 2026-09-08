@@ -13,6 +13,7 @@
                     <p><span class="color-box green"></span> higher degree</p>
                     <p><span class="color-box yellow"></span> lower degree</p>
                     <p><span class="color-box red"></span> isolated</p>
+                    <p><span class="color-box" style="background-color:#ff00ff"></span> bottleneck</p>
     </div>
     <div id="panels-container"></div>
     <div id="analysis-box"></div>
@@ -135,7 +136,10 @@
                         `Removed: ${panel.removedEdges.map(([a,b]) => a+'−'+b).join(', ')}`}<br>
                         Degree distribution: ${panel.ckAdj ? JSON.stringify(degreeDistribution(panel.ckAdj)) : 'N/A'} <br>
                         Average degree: ${panel.ckAdj ? (Object.values(outDegree(panel.ckAdj)).reduce((a, b) => a + b, 0) / Object.values(outDegree(panel.ckAdj)).length).toFixed(2) : 'N/A'} <br>
-                        Bottlenecks: ${panel.bottlenecks ? panel.bottlenecks.length + ' high-degree colorings' : 'N/A'}<br>
+                        Bottlenecks: ${panel.articulationPoints ? panel.articulationPoints.size === 0
+                                        ? 'none — graph stays connected if any single coloring removed'
+                                        : `${panel.articulationPoints.size} cut coloring(s) found`
+                                    : 'N/A'}<br>
                     </div>`;
             }
             return html;
@@ -259,11 +263,16 @@
             return { lost, gained, preserved };
         }
 
-        function degreeColorCode(elements, degrees, avgDegree) {
+        function degreeColorCode(elements, degrees, avgDegree, articulationPoints = new Set()) {
             for (const node of elements) {
                 if (node.data && !node.data.source) {
                     const degree = degrees[node.data.coloringKey] || 0;
-                    if (degree === 0) {
+                    const isAP = articulationPoints.has(node.data.coloringKey);
+
+                    if (isAP) {
+                        node.data.color = "#ff00ff"; // magenta for articulation points
+                        node.data.val = 4;
+                    } else if (degree === 0) {
                         node.data.color = "#f87171"; // red for isolated nodes
                         node.data.val = 1;
                     } else if (degree < avgDegree) {
@@ -271,10 +280,49 @@
                         node.data.val = 1;
                     } else {
                         node.data.color = "#4ade80"; // green for degree > avgDegree
-                        node.data.val = 3;
+                        node.data.val = 2;
                     }
                 }
             }
+        }
+
+        function findArticulationPoints(ckAdj) {
+            const nodes = [...ckAdj.keys()];
+            const disc = {};
+            const low = {};
+            const visited = new Set();
+            const ap = new Set();
+            let timer = 0;
+
+            function dfs(u, parent) {
+                visited.add(u);
+                disc[u] = low[u] = timer++;
+                let children = 0;
+
+                for (const v of ckAdj.get(u) || []) {
+                    if (!visited.has(v)) {
+                        children++;
+                        dfs(v, u);
+                        low[u] = Math.min(low[u], low[v]);
+
+                        // root with 2+ children = articulation point
+                        if (parent === null && children > 1) ap.add(u);
+                        // non-root where subtree can't reach above u
+                        if (parent !== null && low[v] >= disc[u]) ap.add(u);
+
+                    } else if (v !== parent) {
+                        low[u] = Math.min(low[u], disc[v]);
+                    }
+                }
+            }
+
+            for (const node of nodes) {
+                if (!visited.has(node)) {
+                    dfs(node, null);
+                }
+            }
+
+            return ap; // Set of ckeys that are articulation points
         }
         
         //Graph sample data
@@ -284,6 +332,7 @@
         const n = ['D', 'E', 'F']; // , 3
         const vertices = [...m, ...n]; // K 3,3
         const edges = [];
+
         for (const left of m) {
             for (const right of n) {
                 edges.push([left, right]);
@@ -343,10 +392,12 @@
         //find bottlenecks
         const values = Object.values(degrees);
         const avgDegree = values.reduce((a, b) => a + b, 0) / values.length;
-        const bottlenecks = Object.entries(degrees).filter(([node, degree]) => degree > avgDegree).map(([node]) => node);
-        
+
+        const articulationPoints = findArticulationPoints(coloringGraphAdj);
+        console.log("Cut colorings (articulation points):", articulationPoints.size);
+
         //color nodes based on degree
-        degreeColorCode(elements, degrees, avgDegree);
+        degreeColorCode(elements, degrees, avgDegree, articulationPoints);
 
         function recomputePanel(panelIndex) {
             const panel = panelState[panelIndex]; //1
@@ -405,7 +456,8 @@
             }
 
             //apply color coding based on degree
-            degreeColorCode(newElements, newDegrees, avgDegree);
+            const newAP = findArticulationPoints(newColoringGraphAdj);
+            degreeColorCode(newElements, newDegrees, avgDegree, newAP);
 
             const nodes3d = newElements
                 .filter(el => !el.data.source)
@@ -419,11 +471,9 @@
             panel.ckGraph.graphData({ nodes: nodes3d, links: links3d });
 
             //store on panel to use later for analysis
+            panel.articulationPoints = newAP;
             panel.colorings = newColorings;
             panel.ckAdj = newColoringGraphAdj;
-            panel.bottlenecks = Object.entries(newDegrees)
-                .filter(([node, degree]) => degree > avgDegree)
-                .map(([node]) => node);
 
             if (document.getElementById('analysis-box').classList.contains('visible')) {
                 const box = document.getElementById('analysis-box');
