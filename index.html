@@ -99,6 +99,8 @@
             bottom: 24px;
             right: 24px;
             width: 320px;
+            max-height: 60vh;    
+            overflow-y: auto;  
             background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -116,6 +118,21 @@
     </style>
 
     <script>
+        function degreeBreakdown(ckAdj) {
+            if (!ckAdj) return null;
+            const degs = outDegree(ckAdj);
+            const values = Object.values(degs);
+            const avg = values.reduce((a, b) => a + b, 0) / values.length;
+            const total = values.length;
+            const green = values.filter(d => d >= avg).length;
+            const yellow = values.filter(d => d > 0 && d < avg).length;
+            const red = values.filter(d => d === 0).length;
+            return {
+                green: ((green / total) * 100).toFixed(1),
+                yellow: ((yellow / total) * 100).toFixed(1),
+                red: ((red / total) * 100).toFixed(1),
+            };
+        }
         //UI function to build analysis HTML
         function buildAnalysisHTML() {
             if (panelState.length === 0) {
@@ -126,6 +143,12 @@
                 const removed = panel.removedEdges.length;
                 const coloringCount = panel.colorings?.length ?? colorings.length;
                 const diff = colorings.length - coloringCount;
+                const breakdown = degreeBreakdown(panel.ckAdj);
+                const breakdownHTML = breakdown
+                    ? `<span style="color:#4ade80">▉ ${breakdown.green}% high</span> &nbsp;
+                    <span style="color:#facc15">▉ ${breakdown.yellow}% low</span> &nbsp;
+                    <span style="color:#f87171">▉ ${breakdown.red}% isolated</span>`
+                    : 'N/A';
 
                 html += `<div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #555">
                         <b>Panel ${panel.id + 1} </b><br>
@@ -136,6 +159,7 @@
                         `Removed: ${panel.removedEdges.map(([a,b]) => a+'−'+b).join(', ')}`}<br>
                         Degree distribution: ${panel.ckAdj ? JSON.stringify(degreeDistribution(panel.ckAdj)) : 'N/A'} <br>
                         Average degree: ${panel.ckAdj ? (Object.values(outDegree(panel.ckAdj)).reduce((a, b) => a + b, 0) / Object.values(outDegree(panel.ckAdj)).length).toFixed(2) : 'N/A'} <br>
+                        Node degree breakdown: ${breakdownHTML}<br>
                         Bottlenecks: ${panel.articulationPoints ? panel.articulationPoints.size === 0
                                         ? 'none — graph stays connected if any single coloring removed'
                                         : `${panel.articulationPoints.size} cut coloring(s) found`
@@ -621,7 +645,9 @@
             console.log("Original graph nodes:", panel.ogCy.nodes().length, "edges:", panel.ogCy.edges().length);  
 
             panel.ckGraph = createColoringGraph(`ck-${index}`, index);
-            //console.log("Coloring graph nodes:", panel.ckGraph.nodes().length, "edges:", panel.ckGraph.edges().length);
+            panel.colorings = colorings;
+            panel.ckAdj = coloringGraphAdj;
+            panel.articulationPoints = findArticulationPoints(coloringGraphAdj);
         }
 
         console.log("Cytoscape type:", typeof cytoscape);
